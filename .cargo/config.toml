@@ -1,0 +1,4 @@
+[alias]
+# Optional man page install helpers (binary is installed via `cargo install --path .`)
+man-install = "run --quiet --bin xtask -- man-install"
+man-uninstall = "run --quiet --bin xtask -- man-uninstall"

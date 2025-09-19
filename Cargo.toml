@@ -2,5 +2,14 @@
 name = "yubi-rust-tool"
 version = "0.1.0"
 edition = "2024"
+readme = "README.md"
 
 [dependencies]
+
+[[bin]]
+name = "ykchalresp"
+path = "src/main.rs"
+
+[[bin]]
+name = "xtask"
+path = "src/xtask.rs"
