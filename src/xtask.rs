@@ -9,8 +9,16 @@ fn main() {
     let cmd = args.next().unwrap_or_else(|| help_and_exit(2));
     match cmd.as_str() {
         // Legacy commands (not documented): install/uninstall
-        "install" | "man-install" => { if let Err(e) = man_install() { exit_err(e) } }
-        "uninstall" | "man-uninstall" => { if let Err(e) = man_uninstall() { exit_err(e) } }
+        "install" | "man-install" => {
+            if let Err(e) = man_install() {
+                exit_err(e)
+            }
+        }
+        "uninstall" | "man-uninstall" => {
+            if let Err(e) = man_uninstall() {
+                exit_err(e)
+            }
+        }
         _ => help_and_exit(2),
     }
 }
@@ -25,7 +33,9 @@ fn help_and_exit(code: i32) -> ! {
 fn man_install() -> io::Result<()> {
     let (_dest_bin, dest_man) = destinations();
     let src_man = project_root().join("man/ykchalresp.1");
-    if let Some(dir) = dest_man.parent() { fs::create_dir_all(dir)?; }
+    if let Some(dir) = dest_man.parent() {
+        fs::create_dir_all(dir)?;
+    }
     fs::copy(&src_man, &dest_man)?;
     println!("Installed man page:\n  {}", display(&dest_man));
     Ok(())
@@ -45,7 +55,10 @@ fn man_uninstall() -> io::Result<()> {
 fn run(cmd: &mut Command) -> io::Result<()> {
     let status = cmd.status()?;
     if !status.success() {
-        Err(io::Error::new(io::ErrorKind::Other, format!("command failed: {:?}", cmd)))
+        Err(io::Error::new(
+            io::ErrorKind::Other,
+            format!("command failed: {:?}", cmd),
+        ))
     } else {
         Ok(())
     }
@@ -58,9 +71,17 @@ fn project_root() -> PathBuf {
 }
 
 fn prefix() -> PathBuf {
-    let destdir = env::var_os("DESTDIR").map(PathBuf::from).unwrap_or_default();
-    let prefix = env::var_os("PREFIX").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/usr/local"));
-    if destdir.as_os_str().is_empty() { prefix } else { destdir.join(prefix.strip_prefix("/").unwrap_or(&prefix)) }
+    let destdir = env::var_os("DESTDIR")
+        .map(PathBuf::from)
+        .unwrap_or_default();
+    let prefix = env::var_os("PREFIX")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/usr/local"));
+    if destdir.as_os_str().is_empty() {
+        prefix
+    } else {
+        destdir.join(prefix.strip_prefix("/").unwrap_or(&prefix))
+    }
 }
 
 fn destinations() -> (PathBuf, PathBuf) {
@@ -70,7 +91,9 @@ fn destinations() -> (PathBuf, PathBuf) {
     (bin, man)
 }
 
-fn display(p: &Path) -> String { p.display().to_string() }
+fn display(p: &Path) -> String {
+    p.display().to_string()
+}
 
 fn exit_err(e: io::Error) -> ! {
     eprintln!("error: {}", e);

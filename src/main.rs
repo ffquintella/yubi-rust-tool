@@ -4,12 +4,14 @@ use std::io::{self, Read};
 use std::path::PathBuf;
 
 fn usage() -> &'static str {
-    "ykchalresp [-1|-2] [-x] [challenge]\n\n\
+    "ykchalresp [-1|-2] [-x] [-s] [challenge]\n\n\
     -1        use slot 1 (default: slot 2)\n\
     -2        use slot 2\n\
     -x        challenge and response are hex-encoded\n\
+    -s        simulate in software (no hardware)\n\
     If no challenge is provided, read from stdin.\n\
-    Secrets are loaded from:\n\
+    Default: use a real YubiKey directly via the Rust 'yubikey-hmac-otp' crate.\n\
+    Simulation (-s): compute HMAC using a secret loaded from:\n\
       env:  YKCHALRESP_SLOT1_KEY / YKCHALRESP_SLOT2_KEY (hex)\n\
       file: ~/.config/ykchalresp/slot1.key or slot2.key (hex)\n"
 }
@@ -17,6 +19,7 @@ fn usage() -> &'static str {
 fn main() {
     let mut slot: u8 = 2; // default slot 2 to match common usage
     let mut hex_mode = false;
+    let mut simulate = false;
     let mut challenge_arg: Option<String> = None;
 
     let mut args = env::args().skip(1);
@@ -25,6 +28,7 @@ fn main() {
             "-1" => slot = 1,
             "-2" => slot = 2,
             "-x" => hex_mode = true,
+            "-s" => simulate = true,
             "-h" | "--help" => {
                 eprint!("{}", usage());
                 return;
@@ -46,14 +50,7 @@ fn main() {
         }
     }
 
-    // Load secret for the slot
-    let secret = match load_slot_secret(slot) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("{}", e);
-            std::process::exit(1);
-        }
-    };
+    // In hardware mode we don't need to load the secret.
 
     // Read challenge from arg or stdin
     let challenge_bytes = match challenge_arg {
@@ -68,15 +65,35 @@ fn main() {
         }
     };
 
-    // Compute HMAC-SHA1
-    let mac = hmac_sha1(&secret, &challenge_bytes);
+    if simulate {
+        // Simulation: load secret and compute locally
+        let secret = match load_slot_secret(slot) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("{}", e);
+                std::process::exit(1);
+            }
+        };
 
-    if hex_mode {
-        println!("{}", to_hex(&mac));
+        // Compute HMAC-SHA1
+        let mac = hmac_sha1(&secret, &challenge_bytes);
+
+        if hex_mode {
+            println!("{}", to_hex(&mac));
+        } else {
+            // Default ykchalresp uses modhex for output when not using -x
+            let hex = to_hex(&mac);
+            println!("{}", to_modhex(&hex));
+        }
     } else {
-        // Default ykchalresp uses modhex for output when not using -x
-        let hex = to_hex(&mac);
-        println!("{}", to_modhex(&hex));
+        // Hardware: invoke system ykchalresp tool and forward the challenge
+        match run_hardware(slot, hex_mode, &challenge_bytes) {
+            Ok(output) => println!("{}", output),
+            Err(e) => {
+                eprintln!("{}", e);
+                std::process::exit(1);
+            }
+        }
     }
 }
 
@@ -115,8 +132,14 @@ fn load_slot_secret(slot: u8) -> Result<Vec<u8>, String> {
         _ => unreachable!(),
     };
     path.push(file);
-    let content = fs::read_to_string(&path)
-        .map_err(|_| format!("Missing secret for slot {}. Set {} or create {} with hex key.", slot, env_name, path.display()))?;
+    let content = fs::read_to_string(&path).map_err(|_| {
+        format!(
+            "Missing secret for slot {}. Set {} or create {} with hex key.",
+            slot,
+            env_name,
+            path.display()
+        )
+    })?;
     let trimmed = content.trim();
     from_hex(trimmed).map_err(|e| format!("{} contains invalid hex: {}", path.display(), e))
 }
@@ -263,7 +286,8 @@ fn sha1(message: &[u8]) -> [u8; 20] {
                 (b ^ c ^ d, 0xCA62C1D6)
             };
 
-            let temp = a.rotate_left(5)
+            let temp = a
+                .rotate_left(5)
                 .wrapping_add(f)
                 .wrapping_add(e)
                 .wrapping_add(k)
@@ -289,6 +313,36 @@ fn sha1(message: &[u8]) -> [u8; 20] {
     out[12..16].copy_from_slice(&h3.to_be_bytes());
     out[16..20].copy_from_slice(&h4.to_be_bytes());
     out
+}
+
+// ----- Hardware via yubikey crate (OTP HMAC-SHA1 challenge-response) -----
+
+fn run_hardware(slot: u8, hex_mode: bool, challenge: &[u8]) -> Result<String, String> {
+    use yubikey_hmac_otp::config::{Config, Mode, Slot};
+    use yubikey_hmac_otp::Yubico;
+
+    // Discover a YubiKey
+    let mut y = Yubico::new();
+    let yk = y
+        .find_yubikey()
+        .map_err(|e| format!("Failed to find YubiKey: {}", e))?;
+
+    let slot = match slot {
+        1 => Slot::Slot1,
+        2 => Slot::Slot2,
+        _ => return Err("Invalid slot; must be 1 or 2".to_string()),
+    };
+
+    let conf = Config::new_from(yk).set_mode(Mode::Sha1).set_slot(slot);
+    let hmac = y
+        .challenge_response_hmac(challenge, conf)
+        .map_err(|e| format!("YubiKey HMAC-SHA1 challenge failed: {}", e))?;
+
+    if hex_mode {
+        Ok(to_hex(&hmac[..]))
+    } else {
+        Ok(to_modhex(&to_hex(&hmac[..])))
+    }
 }
 
 #[cfg(test)]

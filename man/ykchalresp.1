@@ -1,6 +1,6 @@
 .TH ykchalresp 1 "September 2025" "yubi-rust-tool" "User Commands"
 .SH NAME
-ykchalresp \- HMAC-SHA1 challenge response (software mimic)
+ykchalresp \- HMAC-SHA1 challenge response (hardware or software)
 .SH SYNOPSIS
 .B ykchalresp
 [
@@ -16,9 +16,15 @@ ykchalresp \- HMAC-SHA1 challenge response (software mimic)
 ]
 .SH DESCRIPTION
 .B ykchalresp
-computes an HMAC-SHA1 response for a provided challenge using a per-slot
-secret. It mimics the CLI behavior of the YubiKey tool but does not access
-hardware; secrets are loaded from environment variables or config files.
+computes an HMAC-SHA1 response for a provided challenge using the YubiKey's
+HMAC-SHA1 challenge-response capability (hardware mode), or a configured
+software secret (simulation mode).
+.P
+By default it talks to a real YubiKey directly via the Rust
+.B yubikey-hmac-otp
+crate. Use
+.B -s
+to simulate locally without hardware.
 .PP
 If no
 .I challenge
@@ -39,19 +45,22 @@ Use slot 2 secret (default).
 .B -x
 Hex mode: challenge is hex; output is hex.
 .TP
+.B -s
+Simulation mode: do not access hardware; compute using configured secret.
+.TP
 .B -h, --help
 Show usage and exit.
 .TP
 .B -V, --version
 Show version and exit.
-.SH ENVIRONMENT
+.SH ENVIRONMENT (simulation mode)
 .TP
 .B YKCHALRESP_SLOT1_KEY
 Hex-encoded secret for slot 1.
 .TP
 .B YKCHALRESP_SLOT2_KEY
 Hex-encoded secret for slot 2.
-.SH FILES
+.SH FILES (simulation mode)
 .TP
 .I ~/.config/ykchalresp/slot1.key
 Hex-encoded secret for slot 1.
@@ -70,14 +79,19 @@ Missing secret or I/O error.
 Invalid input or usage.
 .SH EXAMPLES
 .TP
-Compute with hex challenge and hex output (slot 2):
-.nf
-  YKCHALRESP_SLOT2_KEY=001122... ykchalresp -2 -x deadbeef
-.fi
-.TP
-Read challenge from stdin and print modhex:
+Hardware, reading challenge from stdin and printing modhex:
 .nf
   printf 'abcdef' | ykchalresp -2
+.fi
+.TP
+Compute with hex challenge and hex output (slot 2):
+.nf
+  ykchalresp -2 -x deadbeef
+.fi
+.TP
+Simulate using env secret and hex challenge:
+.nf
+  YKCHALRESP_SLOT2_KEY=001122... ykchalresp -s -2 -x deadbeef
 .fi
 .SH SEE ALSO
 .BR ykpersonalize (1),

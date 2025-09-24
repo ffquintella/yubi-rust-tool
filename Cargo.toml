@@ -5,6 +5,7 @@ edition = "2024"
 readme = "README.md"
 
 [dependencies]
+yubikey-hmac-otp = "0.10"
 
 [[bin]]
 name = "ykchalresp"
